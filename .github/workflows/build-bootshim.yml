@@ -1,0 +1,43 @@
+name: Build Surface RT BootShim
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Build ARM BootShim
+        shell: cmd
+        run: |
+          call "%ProgramFiles%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.Component.MSBuild -property installationPath
+          set "VSROOT="
+          for /f "usebackq delims=" %%i in (`"%ProgramFiles%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.Component.MSBuild -property installationPath`) do set "VSROOT=%%i"
+          call "%VSROOT%\Common7\Tools\VsDevCmd.bat" -arch=arm -host_arch=x64
+          msbuild "Boot Shim.sln" /p:Configuration=Debug /p:Platform=ARM /p:WindowsTargetPlatformVersion=10.0.22621.0 /p:PlatformToolset=v143
+
+      - name: Verify BootShim
+        shell: powershell
+        run: |
+          $file = "build\BootShim\ARM\Debug\BootShim.efi"
+          if (!(Test-Path $file)) {
+            Write-Error "BootShim.efi introuvable"
+            exit 1
+          }
+          Get-Item $file
+          Get-FileHash $file -Algorithm SHA256
+
+      - name: Upload BootShim
+        uses: actions/upload-artifact@v4
+        with:
+          name: Surface-RT-BootShim
+          path: build/BootShim/ARM/Debug/BootShim.efi
